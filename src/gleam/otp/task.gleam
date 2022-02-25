@@ -29,6 +29,8 @@
 // TODO: await_many
 import gleam/otp/process.{Pid, Receiver}
 import gleam/dynamic.{Dynamic}
+import gleam/list
+import gleam/result
 
 pub opaque type Task(value) {
   Task(owner: Pid, pid: Pid, receiver: Receiver(Message(value)))
@@ -152,4 +154,50 @@ pub fn try_await_forever(task: Task(value)) -> Result(value, AwaitError) {
 pub fn await_forever(task: Task(value)) -> value {
   assert Ok(value) = try_await_forever(task)
   value
+}
+
+pub type Strategy {
+  OneToOne
+  Workers(Int)
+  BatchSize(Int)
+}
+
+pub type PooledTasks(a) =
+  List(Task(List(a)))
+
+pub fn naive_pooled_map(
+  l: List(a),
+  f: fn(a) -> b,
+  strategy: Strategy,
+) -> PooledTasks(b) {
+  let len = list.length(l)
+  let chunk_size = case strategy {
+    // One worker per item for one-to-one
+    OneToOne -> 1
+
+    // if number of workers is < 1, treat as 1 worker
+    Workers(workers) if workers < 1 -> len
+
+    // if number of workers is > len, treat as one worker per item
+    Workers(workers) if len < workers -> 1
+
+    // calculate number of items per worker
+    Workers(workers) -> len / workers
+
+    // use specified chunk size, no need to check chunk size
+    // because that is handled by list.sized_chunk
+    BatchSize(size) -> size
+  }
+
+  l
+  |> list.sized_chunk(into: chunk_size)
+  |> list.map(fn(l) { async(fn() { list.map(l, f) }) })
+}
+
+pub fn try_await_pooled_forever(
+  l: PooledTasks(a),
+) -> Result(List(a), AwaitError) {
+  l
+  |> list.try_map(try_await_forever)
+  |> result.map(list.flatten)
 }
