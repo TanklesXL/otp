@@ -156,31 +156,31 @@ pub fn await_forever(task: Task(value)) -> value {
 
 pub type Strategy {
   OneToOne
-  Workers(Int)
+  BatchCount(Int)
   BatchSize(Int)
 }
 
-pub type PooledTasks(a) =
+pub type BatchedTasks(a) =
   List(Task(List(a)))
 
-pub fn naive_pooled_map(
+pub fn naive_batched_map(
   l: List(a),
   f: fn(a) -> b,
   strategy: Strategy,
-) -> PooledTasks(b) {
+) -> BatchedTasks(b) {
   let len = list.length(l)
   let chunk_size = case strategy {
     // One worker per item for one-to-one
     OneToOne -> 1
 
     // if number of workers is < 1, treat as 1 worker
-    Workers(workers) if workers < 1 -> len
+    BatchCount(count) if count < 1 -> len
 
     // if number of workers is > len, treat as one worker per item
-    Workers(workers) if len < workers -> 1
+    BatchCount(count) if len < count -> 1
 
     // calculate number of items per worker
-    Workers(workers) -> len / workers
+    BatchCount(count) -> len / count
 
     // use specified chunk size, no need to check chunk size
     // because that is handled by list.sized_chunk
@@ -192,8 +192,8 @@ pub fn naive_pooled_map(
   |> list.map(fn(l) { async(fn() { list.map(l, f) }) })
 }
 
-pub fn try_await_pooled_forever(
-  l: PooledTasks(a),
+pub fn try_await_batched_forever(
+  l: BatchedTasks(a),
 ) -> Result(List(a), AwaitError) {
   l
   |> list.try_map(try_await_forever)

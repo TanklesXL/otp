@@ -1,3 +1,4 @@
+import gleam/list
 import gleeunit/should
 import gleam/otp/task
 import gleam/otp/process
@@ -63,4 +64,48 @@ pub fn asyn_await_forever_test() {
   |> should.equal(5)
   task.await_forever(t6)
   |> should.equal(6)
+}
+
+pub fn naive_batched_async_test() {
+  let work = fn(x) {
+    sleep(5)
+    x
+  }
+
+  let l = [1, 2, 3, 4, 5, 6]
+
+  // 1 element per batch
+  task.naive_batched_map(l, work, task.OneToOne)
+  |> task.try_await_batched_forever
+  |> should.equal(Ok([1, 2, 3, 4, 5, 6]))
+
+  // 2 elements per batch
+  task.naive_batched_map(l, work, task.BatchSize(2))
+  |> task.try_await_batched_forever
+  |> should.equal(Ok([1, 2, 3, 4, 5, 6]))
+
+  // -1 elements per batch, batch size set to 1
+  task.naive_batched_map(l, work, task.BatchSize(-1))
+  |> task.try_await_batched_forever
+  |> should.equal(Ok([1, 2, 3, 4, 5, 6]))
+
+  // length + 1 elements per batch, batch size set to length
+  task.naive_batched_map(l, work, task.BatchSize(list.length(l) + 1))
+  |> task.try_await_batched_forever
+  |> should.equal(Ok([1, 2, 3, 4, 5, 6]))
+
+  // 2 batches, resulting in 3 elements per batch
+  task.naive_batched_map(l, work, task.BatchCount(2))
+  |> task.try_await_batched_forever
+  |> should.equal(Ok([1, 2, 3, 4, 5, 6]))
+
+  // -1 batch count, batch count set to 1
+  task.naive_batched_map(l, work, task.BatchCount(-1))
+  |> task.try_await_batched_forever
+  |> should.equal(Ok([1, 2, 3, 4, 5, 6]))
+
+  // length + 1 batch count, batch count set to length
+  task.naive_batched_map(l, work, task.BatchCount(list.length(l) + 1))
+  |> task.try_await_batched_forever
+  |> should.equal(Ok([1, 2, 3, 4, 5, 6]))
 }
