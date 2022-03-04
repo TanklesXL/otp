@@ -168,28 +168,31 @@ pub fn naive_batched_map(
   f: fn(a) -> b,
   strategy: Strategy,
 ) -> BatchedTasks(b) {
-  let len = list.length(l)
-  let chunk_size = case strategy {
-    // One worker per item for one-to-one
+  l
+  |> list.length
+  |> calculate_batch_size(strategy)
+  |> list.sized_chunk(in: l)
+  |> async_map(list.map(_, f))
+}
+
+fn calculate_batch_size(num_items: Int, strategy: Strategy) -> Int {
+  case strategy {
+    // One batch per item for one-to-one
     OneToOne -> 1
 
-    // if number of workers is < 1, treat as 1 worker
-    BatchCount(count) if count < 1 -> len
+    // if number of batches is < 1, treat as 1 batch
+    BatchCount(count) if count < 1 -> num_items
 
-    // if number of workers is > len, treat as one worker per item
-    BatchCount(count) if len < count -> 1
+    // if number of batches is > len, treat as one item per batch
+    BatchCount(count) if num_items < count -> 1
 
-    // calculate number of items per worker
-    BatchCount(count) -> len / count
+    // calculate number of items per batch
+    BatchCount(count) -> num_items / count
 
-    // use specified chunk size, no need to check chunk size
+    // use specified chunk size as batch size, no need to check chunk size
     // because that is handled by list.sized_chunk
     BatchSize(size) -> size
   }
-
-  l
-  |> list.sized_chunk(into: chunk_size)
-  |> list.map(fn(l) { async(fn() { list.map(l, f) }) })
 }
 
 pub fn try_await_batched_forever(
@@ -198,4 +201,8 @@ pub fn try_await_batched_forever(
   l
   |> list.try_map(try_await_forever)
   |> result.map(list.flatten)
+}
+
+pub fn async_map(l: List(a), f: fn(a) -> b) -> List(Task(b)) {
+  list.map(l, fn(x) { async(fn() { f(x) }) })
 }
