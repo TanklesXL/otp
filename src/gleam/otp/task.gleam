@@ -29,6 +29,7 @@
 // TODO: await_many
 import gleam/otp/process.{Pid, Receiver}
 import gleam/dynamic.{Dynamic}
+import gleam/iterator.{Iterator}
 import gleam/list
 import gleam/result
 
@@ -164,15 +165,34 @@ pub type BatchedTasks(a) =
   List(Task(List(a)))
 
 pub fn naive_batched_map(
-  l: List(a),
-  f: fn(a) -> b,
-  strategy: Strategy,
+  for l: List(a),
+  with f: fn(a) -> b,
+  using strategy: Strategy,
 ) -> BatchedTasks(b) {
   l
   |> list.length
   |> calculate_batch_size(strategy)
   |> list.sized_chunk(in: l)
-  |> async_map(list.map(_, f))
+  |> list.map(async_apply(_, list.map(_, f)))
+}
+
+pub fn iter_naive_batched_map(
+  for i: Iterator(a),
+  with f: fn(a) -> b,
+  using batch_size: Int,
+) -> BatchedTasks(b) {
+  i
+  |> iterator.sized_chunk(into: batch_size)
+  |> iterator.map(async_apply(_, list.map(_, f)))
+  |> iterator.to_list()
+}
+
+pub fn try_await_batched_forever(
+  l: BatchedTasks(a),
+) -> Result(List(a), AwaitError) {
+  l
+  |> list.try_map(try_await_forever)
+  |> result.map(list.flatten)
 }
 
 fn calculate_batch_size(num_items: Int, strategy: Strategy) -> Int {
@@ -195,14 +215,6 @@ fn calculate_batch_size(num_items: Int, strategy: Strategy) -> Int {
   }
 }
 
-pub fn try_await_batched_forever(
-  l: BatchedTasks(a),
-) -> Result(List(a), AwaitError) {
-  l
-  |> list.try_map(try_await_forever)
-  |> result.map(list.flatten)
-}
-
-pub fn async_map(l: List(a), f: fn(a) -> b) -> List(Task(b)) {
-  list.map(l, fn(x) { async(fn() { f(x) }) })
+fn async_apply(a: a, f: fn(a) -> b) -> Task(b) {
+  async(fn() { f(a) })
 }

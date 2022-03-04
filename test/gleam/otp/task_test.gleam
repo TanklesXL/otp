@@ -1,3 +1,4 @@
+import gleam/iterator
 import gleam/list
 import gleeunit/should
 import gleam/otp/task
@@ -106,6 +107,37 @@ pub fn naive_batched_async_test() {
 
   // length + 1 batch count, batch count set to length
   task.naive_batched_map(l, work, task.BatchCount(list.length(l) + 1))
+  |> task.try_await_batched_forever
+  |> should.equal(Ok([1, 2, 3, 4, 5, 6]))
+}
+
+pub fn iter_naive_batched_async_test() {
+  let work = fn(x) {
+    sleep(5)
+    x
+  }
+
+  let l =
+    [1, 2, 3, 4, 5, 6]
+    |> iterator.from_list
+
+  // 1 element per batch
+  task.iter_naive_batched_map(l, work, 1)
+  |> task.try_await_batched_forever
+  |> should.equal(Ok([1, 2, 3, 4, 5, 6]))
+
+  // 2 elements per batch
+  task.iter_naive_batched_map(l, work, 2)
+  |> task.try_await_batched_forever
+  |> should.equal(Ok([1, 2, 3, 4, 5, 6]))
+
+  // -1 elements per batch, batch size set to 1
+  task.iter_naive_batched_map(l, work, -1)
+  |> task.try_await_batched_forever
+  |> should.equal(Ok([1, 2, 3, 4, 5, 6]))
+
+  // length + 1 elements per batch, batch size set to length
+  task.iter_naive_batched_map(l, work, 7)
   |> task.try_await_batched_forever
   |> should.equal(Ok([1, 2, 3, 4, 5, 6]))
 }
